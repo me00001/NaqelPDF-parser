@@ -1,4 +1,6 @@
 require 'pdf-reader'
+require 'json'
+require 'csv'
 
 def extract_waybill_info(pdf_file_path)
   begin
@@ -41,12 +43,18 @@ def extract_waybill_info(pdf_file_path)
 end
 
 # Check if a directory path was provided as an argument
-if ARGV.length != 1
-  puts "Usage: ruby naqelp.rb path/to/PDF/directory"
+if ARGV.length != 3
+  puts "Usage: ruby naqelp.rb path/to/PDF/directory output.json output.csv"
   exit 1
 end
 
 directory_path = ARGV[0]
+json_output_file_path = ARGV[1]
+csv_output_file_path = ARGV[2]
+
+# Initialize an array to hold all extracted information
+extracted_data = []
+
 
 # Iterate over all PDF files in the specified directory
 Dir.glob(File.join(directory_path, '*.pdf')) do |pdf_file_path|
@@ -58,7 +66,40 @@ Dir.glob(File.join(directory_path, '*.pdf')) do |pdf_file_path|
     puts "Origins: #{info[:origins].join(', ')}" if info[:origins].any?
     puts "Destinations: #{info[:destinations].join(', ')}" if info[:destinations].any?
     puts "-" * 40 # Separator for clarity
+    extracted_data << { file: pdf_file_path }.merge(info)
   else
     puts "Information not found in file: #{pdf_file_path}"
+    extracted_data << { file: pdf_file_path, error: "Information not found", waybill_numbers: [], origins: [], destinations: [] }
   end
+end
+
+# Write the extracted data to a JSON file
+File.open(json_output_file_path, 'w') do |file|
+  file.write(JSON.pretty_generate(extracted_data))
+  puts "Extracted information has been written to #{json_output_file_path}"
+end
+
+# Write the extracted data to a CSV file
+CSV.open(csv_output_file_path, 'w') do |csv|
+  # Add headers to the CSV
+  csv << ['File', 'WayBill', 'Origin', 'Destination']
+
+  extracted_data.each do |data|
+    # Get the maximum number of entries for waybills, origins, and destinations
+    max_entries = [data[:waybill_numbers].size, data[:origins].size, data[:destinations].size].max
+
+    max_entries.times do |i|
+      # Prepare the row data
+      row = [
+        data[:file], 
+        data[:waybill_numbers][i] || '',  # WayBill
+        data[:origins][i] || '',           # Origin
+        data[:destinations][i] || ''       # Destination
+      ]
+      
+      # Write the row to the CSV
+      csv << row
+    end
+  end
+  puts "Extracted information has been written to #{csv_output_file_path}"
 end
